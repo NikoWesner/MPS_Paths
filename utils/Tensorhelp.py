@@ -9,6 +9,7 @@ class MPS:
         self.p=1;
         self.E=0;
         self.r=[None]*(expo-1)
+        self.size=0
 
     def truncated_r(self,T, e):
         dim = T.shape
@@ -42,6 +43,7 @@ class MPS:
 
         self.cores[-1] = M
         self.E=E
+        self.r=r
 
     def truncated_l(self,T, e):
         dim = T.shape
@@ -315,6 +317,45 @@ class MPS:
         self.p = 1;
         self.E = 0;
         self.truncated_l(T,0)
+    def getSize(self):
+        r1=np.append(self.r,1)
+        r2=np.append(1,self.r)
+        self.size=np.sum(r2*r2)*2
+    def GourianovPlot(self,T):
+        dim = T.shape
+        N = T.size
+        l = self.expo
+        Ss=[None]*(l-1)
+
+        T = T.reshape(N//dim[-1],dim[-1])
+        self.p = np.linalg.norm(T, ord='fro')
+        T = T / self.p
+        U, S, Vt = np.linalg.svd(T, full_matrices=False)
+        Ss[-1]=S
+        U, S, Vt, rs, Er = killSVD(U, S, Vt, 0)
+        E = Er
+        self.cores[-1] = Vt
+
+        M = U @ S
+        r = np.zeros(l - 1, dtype=int)
+        r[-1] = rs
+        Gs = [None] * (l - 2)
+
+        for i in reversed(range(1,l - 1)):
+            M = M.reshape(M.size // (r[i] * dim[i]), (r[i] * dim[i]))
+            U, S, Vt = np.linalg.svd(M, full_matrices=False)
+            Ss[i-1]=S
+            U, S, Vt, rs, Er = killSVD(U, S, Vt, 0)
+            E+=Er
+            r[i-1] = rs
+            Gi = Vt.reshape(r[i - 1], dim[i], r[i])
+            self.cores[i] = Gi
+            M = U @ S
+
+        self.cores[0] = M
+        self.E = E
+        self.r=r
+        return Ss
 
 class MPO:
 
@@ -323,6 +364,8 @@ class MPO:
         self.expo=expo
         self.p=1
         self.E=0
+        self.r=[None]*(expo-1)
+
 
     def truncated_r(self,T, e):
         permuter=np.zeros((2*self.expo),dtype=int)
@@ -357,6 +400,7 @@ class MPO:
             M = S @ Vt
 
         self.cores[-1] = M.reshape(r[-1], dim[l - 2], dim[l - 1])
+        self.r=r
 
     def truncated_l(self,T, e):
         permuter = np.zeros((2 * self.expo), dtype=int)
@@ -393,6 +437,7 @@ class MPO:
             M = U @ S
 
         self.cores[0] = M.reshape(dim[0], dim[1],r[0])
+        self.r=r
 
     def truncated_l(self,T, e):
         permuter = np.zeros((2 * self.expo), dtype=int)
@@ -436,7 +481,50 @@ class MPO:
         for i in range(1,self.expo-1):
             T=np.tensordot(T,self.cores[i+1],axes=(-1,0))
         return T.reshape(2**self.expo,2**self.expo)*self.p;
+    def permutationMPO(self,i,j):
+        if i==j:
+            print("cannot permute, i==j")
+        else:
+            bitsi = np.array(list(format(i, f'0{self.expo}b')), dtype=int)
+            bitsj = np.array(list(format(j, f'0{self.expo}b')), dtype=int)
 
+            bin2arrdiag= {"0":np.array([[1,0],[0,0]]),"1":np.array([[0,0],[0,1]])}
+            bin2arrodiag={"00":np.array([[1,0],[0,0]]),"11":np.array([[0,0],[0,1]]),"01":np.array([[0,1],[0,0]]),"10":np.array([[0,0],[1,0]])}
+
+
+            self.cores[0]=np.zeros((2,2,5))
+            self.cores[0][:,:,0]=np.array([[1,0],[0,1]])
+            self.cores[0][:,:,1]=-bin2arrdiag[f'{bitsi[0]}']
+            self.cores[0][:,:,2]=-bin2arrdiag[f'{bitsj[0]}']
+            self.cores[0][:,:,3]=bin2arrodiag[f'{bitsi[0]}{bitsj[0]}']
+            self.cores[0][:,:,4]=bin2arrodiag[f'{bitsj[0]}{bitsi[0]}']
+
+            self.cores[-1]=np.zeros((5,2,2))
+            self.cores[-1][0,:,:]=np.array([[1,0],[0,1]])
+            self.cores[-1][1,:,:]=bin2arrdiag[f'{bitsi[-1]}']
+            self.cores[-1][2,:,:]=bin2arrdiag[f'{bitsj[-1]}']
+            self.cores[-1][3,:,:]=bin2arrodiag[f'{bitsi[-1]}{bitsj[-1]}']
+            self.cores[-1][4,:,:]=bin2arrodiag[f'{bitsj[-1]}{bitsi[-1]}']
+        
+            for i in range(1,self.expo-1):
+                self.cores[i]=np.zeros((5,2,2,5))
+                self.cores[i][0,:,:,0]=np.eye(2)
+                ai=bitsi[i]
+                aj=bitsj[i]
+                self.cores[i][0,:,:,0]=np.array([[1,0],[0,1]])
+                self.cores[i][1,:,:,1]=bin2arrdiag[f'{ai}']
+                self.cores[i][2,:,:,2]=bin2arrdiag[f'{aj}']
+                self.cores[i][3,:,:,3]=bin2arrodiag[f'{ai}{aj}']
+                self.cores[i][4,:,:,4]=bin2arrodiag[f'{aj}{ai}']
+
+
+                
+
+        
+
+
+
+    
 def killSVD(U, S, Vt, e):
     # Placeholder for the killSVD function.
     # Adjust this function to match your MATLAB implementation.
@@ -486,4 +574,7 @@ def exactSol(a, expo, t, acc):
 
     return Tex
 
-
+def getTensor_forMPS(T,expo):
+    MPS_Size=2*np.ones(expo, dtype=int)
+    T=np.reshape(T,MPS_Size)
+    return T

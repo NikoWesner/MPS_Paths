@@ -84,37 +84,43 @@ plt.pcolormesh(x,y,T,cmap='viridis')
 plt.colorbar()
 plt.xlabel('x')
 plt.ylabel('y')
+T_assemble=np.reshape(T_assemble,(eexpo,eexpo))
 
-MPS1=MPS(2*expo)
+U,S,Vt=np.linalg.svd(T_assemble,full_matrices=False)
+U,S,Vt,r,E=killSVD(U,S,Vt,1E-6)
+print(f"r:{r}")
 
-MPS_Size=2*np.ones(2*expo, dtype=int)
-T_assemble=np.reshape(T_assemble,MPS_Size)
-e=1E-4
 
-MPS1.truncated_l(T_assemble,e)
-print(MPS1.r)
-xp = path[0::2]
-yp = path[1::2]
+# MPS1=MPS(2*expo)
 
-fig, ax = plt.subplots(figsize=(6, 6))
-ax.set_xlim(-0.5, eexpo + 0.5)
-ax.set_ylim(-0.5, eexpo + 0.5)
-ax.set_xticks(np.arange(0, eexpo + 1, 1))
-ax.set_yticks(np.arange(0, eexpo + 1, 1))
-ax.grid(True, which='both', color='gray', linestyle='--', linewidth=0.5)
+# MPS_Size=2*np.ones(2*expo, dtype=int)
+# T_assemble=np.reshape(T_assemble,MPS_Size)
+# e=1E-4
 
-# Draw the path
-ax.plot(xp, yp, 'o-', color='red', linewidth=2, markersize=6, label='Path')
+# MPS1.truncated_l(T_assemble,e)
+# print(MPS1.r)
+# xp = path[0::2]
+# yp = path[1::2]
 
-# Label points
-for i, (xi, yi) in enumerate(zip(xp, yp)):
-    ax.text(xi + 0.1, yi + 0.1, f'{i+1}', color='blue')
+# fig, ax = plt.subplots(figsize=(6, 6))
+# ax.set_xlim(-0.5, eexpo + 0.5)
+# ax.set_ylim(-0.5, eexpo + 0.5)
+# ax.set_xticks(np.arange(0, eexpo + 1, 1))
+# ax.set_yticks(np.arange(0, eexpo + 1, 1))
+# ax.grid(True, which='both', color='gray', linestyle='--', linewidth=0.5)
 
-ax.set_xlabel('X index')
-ax.set_ylabel('Y index')
-ax.set_title('Mesh with Path')
-ax.legend()
-plt.gca().set_aspect('equal', adjustable='box')
+# # Draw the path
+# ax.plot(xp, yp, 'o-', color='red', linewidth=2, markersize=6, label='Path')
+
+# # Label points
+# for i, (xi, yi) in enumerate(zip(xp, yp)):
+#     ax.text(xi + 0.1, yi + 0.1, f'{i+1}', color='blue')
+
+# ax.set_xlabel('X index')
+# ax.set_ylabel('Y index')
+# ax.set_title('Mesh with Path')
+# ax.legend()
+# plt.gca().set_aspect('equal', adjustable='box')
 plt.show()
 
 
