@@ -1,18 +1,26 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
+from utils.Tensorhelp import *
 import math
 
-def LinearDependency(v1,v2):
-    p1=np.linalg.norm(v1,2)
-    p2=np.linalg.norm(v2,2)
-    dot=np.dot(v1,v2)
 
-    costheta=dot/(p1*p2)
 
-    return np.abs(1-costheta)
 
-A=np.array([[1,2,3,4,5,6,7,8],[9,10,11,12,13,14,15,16]])
-A=np.reshape(A,(4,4))
+expo=3
+MPO1=MPO(expo)
+MPO2=MPO(expo)
 
+MPO1.permutationMPO(2,5)
+print(MPO1.r)
+I=np.eye(2**expo)
+T=getTensor_forMP0(I,expo)
+
+MPO2.permutationMPO()
+A=MPO1.reTensor()
 print(A)
+MPO1.MPOMP0(MPO2)
+
+A=MPO1.reTensor()
+print(A)
+print(MPO1.r)
