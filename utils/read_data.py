@@ -1,5 +1,7 @@
 import numpy as np
 import re
+import h5py
+from typing import Dict,Union,Any
 
 def read_amira(path):
     """
@@ -84,3 +86,39 @@ def read_amira(path):
 
     return arr, info
 
+def read_h5_data(file_path: str) -> Dict[str, np.ndarray]:
+    """
+    Reads all datasets from an HDF5 file and returns them in a dictionary.
+
+    Args:
+        file_path (str): The path to the .h5 or .hdf5 file.
+
+    Returns:
+        Dict[str, np.ndarray]: A dictionary where keys are the dataset names 
+                                (paths) and values are the corresponding 
+                                NumPy arrays.
+    """
+    data = {}
+    
+    try:
+        # Open the HDF5 file in read mode ('r')
+        with h5py.File(file_path, 'r') as f:
+            
+            # Helper function to recursively traverse groups and find datasets
+            def get_datasets(name, obj):
+                # Check if the object is a dataset
+                if isinstance(obj, h5py.Dataset):
+                    # Read the dataset content into a NumPy array
+                    data[name] = obj[()]
+            
+            # Visit all items in the file, calling get_datasets for each one
+            f.visititems(get_datasets)
+            
+    except FileNotFoundError:
+        print(f"Error: File not found at path: {file_path}")
+        return {}
+    except Exception as e:
+        print(f"An error occurred while reading the HDF5 file: {e}")
+        return {}
+        
+    return data

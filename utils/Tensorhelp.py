@@ -516,9 +516,59 @@ class MPO:
                 self.cores[i][2,:,:,2]=bin2arrdiag[f'{aj}']
                 self.cores[i][3,:,:,3]=bin2arrodiag[f'{ai}{aj}']
                 self.cores[i][4,:,:,4]=bin2arrodiag[f'{aj}{ai}']
+    def reTruncate(self,e):
+        
+        s=self.cores[0].shape
+        Z=np.reshape(self.cores[0],(1*s[0]*s[1],s[2]))
+        Q, R = np.linalg.qr(Z)
+        self.cores[0]=np.reshape(Q,(s[0],s[1],s[2]))
+        self.cores[1]=np.tensordot(R,self.cores[1],axes=(1,0))
+        for i in range(1,self.expo-1):
+            A=self.cores[i]
+            s=A.shape
+            A=A.reshape(s[0]*s[1]*s[2],s[3])
+            Q, R = np.linalg.qr(A)
+            self.cores[i]=Q.reshape(s[0],s[1],s[2],s[3])
+            self.cores[i+1]=np.tensordot(R,self.cores[i+1],axes=(1,0))
 
+        p=np.linalg.norm(self.cores[-1],ord='fro');
+        p2=np.trace(np.matmul(np.transpose(self.cores[-1]),self.cores[-1]))
+        p2=np.sqrt(p2)
+        self.cores[-1]=self.cores[-1]/p2
+        self.p=self.p*p2
 
-                
+        s = self.cores[-1].shape
+        A = self.cores[-1].reshape(s[0], s[1])
+        U, S, Vt = np.linalg.svd(A, full_matrices=False)
+        U, S, Vt, rs, Er = killSVD(U, S, Vt, e)
+        self.r[-1] = rs
+        E = Er
+        self.cores[-1] = Vt
+        M=U@S
+        a=M.shape[0]
+        self.cores[-2]=self.cores[-2][:,:,0:a]
+        self.cores[-2] = np.tensordot(self.cores[-2], M, axes=(-1, 0))
+
+        for i in reversed(range(1,self.expo-1)):
+            s=self.cores[i].shape
+            A=self.cores[i].reshape(s[0],s[1]*s[2])
+            U,S,Vt=np.linalg.svd(A,full_matrices=False)
+            U, S, Vt, rs, Er = killSVD(U, S, Vt, e)
+            E += Er
+            self.r[i - 1] = rs
+            self.cores[i] = Vt.reshape(Vt.size//(s[1]*s[2]),s[1],s[2])
+            M=U@S
+            a = M.shape[0]
+
+            if i==1:
+                self.cores[0]=self.cores[0][:,0:a]
+                self.cores[0] = np.tensordot(self.cores[0], M, axes=(-1, 0))
+                break
+            self.cores[i-1] = self.cores[i-1][:, :, 0:a]
+            self.cores[i-1] = np.tensordot(self.cores[i-1],M,axes=(-1,0))
+
+        pc=np.trace(np.matmul(np.transpose(self.cores[0]),self.cores[0]))
+        self.E +=E 
 
         
 
