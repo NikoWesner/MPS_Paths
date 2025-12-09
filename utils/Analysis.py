@@ -367,7 +367,7 @@ def plotGourianov_ax(ax, data, title="Log-Scaled Heatmap", log_thresholds=[-2,-3
         ax.legend(title='Threshold', loc='lower left', fontsize=8, framealpha=0.7)
 
     return im
-def getGouianovplots(MPS1,MPS2,MPSG,MPSH,fun,expo):
+def getGouianovplots(MPS1,MPS2,MPSG,MPSH,fun,expo,name):
     
     fun1,fun2,funG,funH=getAllMPS_PlotFormat(fun,expo)
     data1=MPS1.GourianovPlot(fun1)
@@ -380,6 +380,7 @@ def getGouianovplots(MPS1,MPS2,MPSG,MPSH,fun,expo):
     fig.subplots_adjust(right=0.85)
 
     im_objects = []
+    fig.suptitle(name, fontsize=16)
     for i in range(2):
         for j in range(2):
             data_index = i * 2 + j
@@ -412,7 +413,7 @@ def getGouianovplots(MPS1,MPS2,MPSG,MPSH,fun,expo):
         cbar.set_ticks(tick_vals)
         cbar.set_ticklabels([f'$10^{{{int(t)}}}$' for t in tick_vals])
 
-    plt.tight_layout(rect=[0, 0, 0.88, 1])
+    plt.tight_layout(rect=[0, 0, 0.88, 0.96])
 def fetch4plots(fun,expo,e,name):
     print("----------------------------")
     print(name)
@@ -424,7 +425,7 @@ def fetch4plots(fun,expo,e,name):
     print(f"Gourianov:{rg},{sg}")
     print(f"Hilbert:{rh},{sh}")
     print(f"minmax:{r2},{s2}")
-    getGouianovplots(MPS1,MPS2,MPSG,MPSH,fun,expo)
+    getGouianovplots(MPS1,MPS2,MPSG,MPSH,fun,expo,name)
     print(f"Lineardependency:{d1}")
     print("----------------------------")   
     return

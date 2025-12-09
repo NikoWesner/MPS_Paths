@@ -356,6 +356,45 @@ class MPS:
         self.E = E
         self.r=r
         return Ss
+    def getElement(self,element_index):
+        element=self.cores[0][element_index[0],:]
+        for i in range(1,self.expo-1):
+            element=element@self.cores[i][:,element_index[i],:]
+        element=element@self.cores[-1][:,element_index[-1]]
+        return element*self.p
+    def quicksort(self, low_bit_array, high_bit_array):
+        """
+        The main quicksort function where low and high are given as bit arrays.
+        Now correctly handles the pi - 1 boundary condition.
+        """
+        # 1. Convert bit arrays to integers
+        low = bit_array_to_int(low_bit_array)
+        high = bit_array_to_int(high_bit_array)
+
+        if low < high:
+            # Get the partition index 'pi' as a BIT ARRAY
+            pi_bit_array = partition(self, low_bit_array, high_bit_array)
+            
+            # Convert pi back to integer for arithmetic checks
+            pi = bit_array_to_int(pi_bit_array)
+            
+            # --- FIX APPLIED HERE ---
+            
+            # 1. Recursive call on the left: indices low to pi - 1
+            # ONLY proceed if pi - 1 is a valid index (i.e., pi > low)
+            if pi > low:
+                new_high_left_bit_array = int_to_bit_array(pi - 1 ,self.expo) 
+                # Note: Assuming you pass the required bit length (n) here
+                self.quicksort( low_bit_array, new_high_left_bit_array)
+
+            # 2. Recursive call on the right: indices pi + 1 to high
+            # ONLY proceed if pi + 1 is a valid index (i.e., pi < high)
+            if pi < high:
+                new_low_right_bit_array = int_to_bit_array(pi + 1 ,self.expo)
+                # Note: Assuming you pass the required bit length (n) here
+                self.quicksort( new_low_right_bit_array, high_bit_array)
+                
+
 
 class MPO:
 
@@ -571,7 +610,7 @@ class MPO:
 
         self.E +=E 
 
-    def MPOMP0(self,MPO):
+    def MPOMPO(self,MPO):
         A = np.tensordot(MPO.cores[0], self.cores[0], axes=(1, 0))
         A=A.transpose(0,2,1,3)
         A=A.reshape(A.shape[0],A.shape[1],A.shape[2]*A.shape[3])
@@ -587,8 +626,19 @@ class MPO:
         A=A.reshape(A.shape[0]*A.shape[1],A.shape[2],A.shape[3])
         self.cores[-1]=A
         self.p=self.p*MPO.p
-
-
+        self.r=self.r*MPO.r
+    def eye(self):
+        core1=np.zeros((2,2,1))
+        coreend=np.zeros((1,2,2))
+        coredef=np.zeros((1,2,2,1))
+        core1[:,:,0]=np.eye(2)
+        coreend[0,:,:]=np.eye(2)
+        coredef[0,:,:,0]=np.eye(2)
+        self.cores[0]=core1
+        self.cores[-1]=coreend
+        for i in range(1,self.expo-1):
+            self.cores[i]=coredef
+        self.r=np.ones(self.expo-1)
         
 
 
@@ -667,3 +717,75 @@ def create_interleaved_array(expo):
     permuter = permuter.tolist()
     permuter = tuple(permuter)
     return permuter
+
+def int_to_bit_array(n, n_bits):
+    """
+    Converts a Python integer 'n' into a list of 'n_bits' bits (MSB first), 
+    padding with leading zeros if necessary.
+    """
+    if n < 0:
+        raise ValueError("Input integer must be non-negative.")
+        
+    # 1. Convert to binary string
+    # bin(n) returns a string like '0b1011'. [2:] slices off the '0b'.
+    binary_string = bin(n)[2:]
+    
+    # 2. Check for overflow
+    if len(binary_string) > n_bits:
+        raise OverflowError(f"Integer {n} requires more than {n_bits} bits.")
+        
+    # 3. Pad with leading zeros
+    # e.g., if n_bits=8 and binary_string='101', padded_string becomes '00000101'
+    padded_string = binary_string.zfill(n_bits)
+    
+    # 4. Convert padded string to a list of integers
+    return [int(bit) for bit in padded_string]
+
+def bit_array_to_int(bit_array):
+    """
+    Converts a list/array of bits (most significant bit first) into a Python integer,
+    handling cases where array elements might be non-standard integer types.
+    """
+    integer_value = 0
+    
+    # Iterate through the bits from left (MSB) to right (LSB)
+    for bit in bit_array:
+        # **THE FIX:** Explicitly cast 'bit' to a standard Python 'int'
+        int_bit = int(bit)
+        
+        # Bitwise left shift (multiplies by 2) and bitwise OR (adds the current bit)
+        integer_value = (integer_value << 1) | int_bit
+        
+    return integer_value
+def partition(MPS,low,high):
+    pivot=MPS.getElement(high)
+    low_dec=bit_array_to_int(low)
+    high_dec=bit_array_to_int(high)
+    i=low_dec-1
+    expo=MPS.expo
+    MPO1=MPO(expo)
+    MPO2=MPO(expo)
+    MPO1.eye()
+
+    for j in range(low_dec,high_dec):
+        j_bin=int_to_bit_array(j,expo)
+        element=MPS.getElement(j_bin)
+        chi=5
+        if element<=pivot:
+            i=i+1
+            if i==j:
+                continue
+            MPO2.permutationMPO(i,j)
+            MPO1.MPOMPO(MPO2)
+            MPO1.reTruncate(1E-10)
+    if high_dec==(i+1):
+        MPO2.eye()
+    else:    
+        MPO2.permutationMPO(i+1,high_dec)
+    MPO1.MPOMPO(MPO2)
+    MPO1.reTruncate(1E-10)
+    MPS.MPOMPS(MPO1)
+    return int_to_bit_array(i+1,expo)
+
+
+
