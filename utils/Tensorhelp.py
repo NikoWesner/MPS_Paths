@@ -477,9 +477,11 @@ class MPO:
 
     def reTensor(self):
         T=np.tensordot(self.cores[0],self.cores[1],axes=(2,0))
-        index=5;
+        index=5
         for i in range(1,self.expo-1):
             T=np.tensordot(T,self.cores[i+1],axes=(-1,0))
+        A=create_interleaved_array(self.expo)
+        T=T.transpose(A)
         return T.reshape(2**self.expo,2**self.expo)*self.p;
     def permutationMPO(self,i,j):
         if i==j:
@@ -516,59 +518,76 @@ class MPO:
                 self.cores[i][2,:,:,2]=bin2arrdiag[f'{aj}']
                 self.cores[i][3,:,:,3]=bin2arrodiag[f'{ai}{aj}']
                 self.cores[i][4,:,:,4]=bin2arrodiag[f'{aj}{ai}']
+        self.r=5*np.ones(self.expo-1)
     def reTruncate(self,e):
         
         s=self.cores[0].shape
         Z=np.reshape(self.cores[0],(1*s[0]*s[1],s[2]))
         Q, R = np.linalg.qr(Z)
-        self.cores[0]=np.reshape(Q,(s[0],s[1],s[2]))
+        self.cores[0]=np.reshape(Q,(s[0],s[1],Q.size//(s[0]*s[1])))
         self.cores[1]=np.tensordot(R,self.cores[1],axes=(1,0))
         for i in range(1,self.expo-1):
             A=self.cores[i]
             s=A.shape
             A=A.reshape(s[0]*s[1]*s[2],s[3])
             Q, R = np.linalg.qr(A)
-            self.cores[i]=Q.reshape(s[0],s[1],s[2],s[3])
+            self.cores[i]=Q.reshape(s[0],s[1],s[2],Q.size//(s[0]*s[1]*s[2]))
             self.cores[i+1]=np.tensordot(R,self.cores[i+1],axes=(1,0))
 
-        p=np.linalg.norm(self.cores[-1],ord='fro');
-        p2=np.trace(np.matmul(np.transpose(self.cores[-1]),self.cores[-1]))
+        p2=np.trace(np.tensordot(self.cores[-1],self.cores[-1],axes=((1,2),(2,1))))
         p2=np.sqrt(p2)
         self.cores[-1]=self.cores[-1]/p2
         self.p=self.p*p2
 
         s = self.cores[-1].shape
-        A = self.cores[-1].reshape(s[0], s[1])
+        A = self.cores[-1].reshape(s[0],s[1]*s[2])
         U, S, Vt = np.linalg.svd(A, full_matrices=False)
         U, S, Vt, rs, Er = killSVD(U, S, Vt, e)
         self.r[-1] = rs
         E = Er
-        self.cores[-1] = Vt
+        self.cores[-1] = Vt.reshape(rs,s[1],s[2])
         M=U@S
         a=M.shape[0]
-        self.cores[-2]=self.cores[-2][:,:,0:a]
+        self.cores[-2]=self.cores[-2][:,:,:,0:a]
         self.cores[-2] = np.tensordot(self.cores[-2], M, axes=(-1, 0))
 
         for i in reversed(range(1,self.expo-1)):
             s=self.cores[i].shape
-            A=self.cores[i].reshape(s[0],s[1]*s[2])
+            A=self.cores[i].reshape(s[0],s[1]*s[2]*s[3])
             U,S,Vt=np.linalg.svd(A,full_matrices=False)
             U, S, Vt, rs, Er = killSVD(U, S, Vt, e)
             E += Er
             self.r[i - 1] = rs
-            self.cores[i] = Vt.reshape(Vt.size//(s[1]*s[2]),s[1],s[2])
+            self.cores[i] = Vt.reshape(rs,s[1],s[2],s[3])
             M=U@S
             a = M.shape[0]
 
             if i==1:
-                self.cores[0]=self.cores[0][:,0:a]
+                self.cores[0]=self.cores[0][:,:,0:a]
                 self.cores[0] = np.tensordot(self.cores[0], M, axes=(-1, 0))
                 break
-            self.cores[i-1] = self.cores[i-1][:, :, 0:a]
+            self.cores[i-1] = self.cores[i-1][:, :,:, 0:a]
             self.cores[i-1] = np.tensordot(self.cores[i-1],M,axes=(-1,0))
 
-        pc=np.trace(np.matmul(np.transpose(self.cores[0]),self.cores[0]))
         self.E +=E 
+
+    def MPOMP0(self,MPO):
+        A = np.tensordot(MPO.cores[0], self.cores[0], axes=(1, 0))
+        A=A.transpose(0,2,1,3)
+        A=A.reshape(A.shape[0],A.shape[1],A.shape[2]*A.shape[3])
+        self.cores[0]=A
+        for i in range(1,self.expo-1):
+            A= np.tensordot(MPO.cores[i],self.cores[i],axes=(2,1))
+            A=A.transpose(0,3,1,4,2,5)
+            A=A.reshape(A.shape[0]*A.shape[1],A.shape[2],A.shape[3],A.shape[4]*A.shape[5])
+            self.cores[i]=A
+
+        A=np.tensordot(MPO.cores[-1],self.cores[-1],axes=(2,1))
+        A=A.transpose(0,2,1,3)
+        A=A.reshape(A.shape[0]*A.shape[1],A.shape[2],A.shape[3])
+        self.cores[-1]=A
+        self.p=self.p*MPO.p
+
 
         
 
@@ -628,3 +647,23 @@ def getTensor_forMPS(T,expo):
     MPS_Size=2*np.ones(expo, dtype=int)
     T=np.reshape(T,MPS_Size)
     return T
+def getTensor_forMP0(T,expo):
+    MP0_Size=2*np.ones(2*expo, dtype=int)
+    T=np.reshape(T,MP0_Size)
+    return T
+def create_interleaved_array(expo):
+    """
+    Creates an array of size 2N where:
+    - Even indices (0, 2, ...) have 0, 1, ..., N-1
+    - Odd indices (1, 3, ...) have N, N+1, ..., 2N-1
+    """
+    # The array is constructed by creating pairs (k, N+k) for k from 0 to N-1
+    # and then flattening the resulting list of pairs using a nested list comprehension.
+    permuter = np.zeros((2 * expo), dtype=int)
+
+    for i in range(expo):
+        permuter[i] = 2*i
+        permuter[expo+i] = 2*i+1
+    permuter = permuter.tolist()
+    permuter = tuple(permuter)
+    return permuter
