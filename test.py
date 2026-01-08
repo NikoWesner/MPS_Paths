@@ -8,7 +8,7 @@ from hilbertcurve.hilbertcurve import HilbertCurve
 from matplotlib.colors import LogNorm, PowerNorm
 import math
 import matplotlib.cm as cm
-from utils.Analysis import fetch4plots
+from utils.Analysis import fetch4plots,sort_by_pairs,variation_of_lasttwo
 def sinconst_alpha(x,y,alpha):
 
     fun= np.sin(np.cos(alpha)*x+np.sin(alpha)*y)
@@ -289,23 +289,19 @@ U0=np.sqrt(u0**2+v0**2)
 fun=sinconst_k(X,Y,150)
 fun2=randomfunction(X,Y)
 fun3=synthesize_2d_holder_function(1.2)
-fun4=sinconst_alpha(X,Y,np.pi/4)
+fun4=sinconst_alpha(X,Y,0)
 M=create_mandelbrot_fractal()
 
 expo=9
 eexpo=2**expo
-e=1E-4
+e=2E-3
 
-# compute_and_visualize_fft2d(U0,"Velocity")
-# compute_and_visualize_fft2d(fun,"Sinsum")
-# compute_and_visualize_fft2d(fun2,"X+Y")
-# compute_and_visualize_fft2d(M,"Mandelbrot")
-# compute_and_visualize_fft2d(fun3,"Synth")
-# compute_and_visualize_fft2d(fun4,"Sin45")
+
+
 
 
 # plt.figure()
-# plt.pcolormesh(X,Y,fun)
+# plt.pcolormesh(X,Y,M)
 # plt.title("SinSum")
 # plt.figure()
 # plt.pcolormesh(X,Y,fun2)
@@ -330,11 +326,34 @@ e=1E-4
 # print(alpha1,alpha2,alpha3)
 
 
-fetch4plots(U0,expo,e,"Velocity")
-fetch4plots(fun,expo,e,"SinSum")
-fetch4plots(fun2,expo,e,"X+Y")
-fetch4plots(fun3,expo,e,"Synth")
-fetch4plots(fun4,expo,e,"Sin45")
-fetch4plots(M,expo,e,"Mandelbrot")
+# fetch4plots(U0,expo,e,"Velocity")
+# fetch4plots(fun,expo,e,"SinSum")
+# fetch4plots(fun2,expo,e,"X+Y")
+# fetch4plots(fun3,expo,e,"Synth")
+# fetch4plots(fun4,expo,e,"Sin45")
+# fetch4plots(M,expo,e,"Mandelbrot")
+
+MPS1=MPS(2*expo)
+# T1=variation_of_lasttwo(U0)
+T1=U0
+T1=getTensor_forMPS(T1,2*expo)
+print(np.shape(T1))
+MPS1.truncated_l(T1,e)
+MPS1.getSize()
+T1=MPS1.reTensor()
+T1=T1.reshape(2**expo*2**expo,1)
+T1[-2]=0
+T1[-1]=0
+U0_flat=U0.reshape(2**expo*2**expo,1)
+U0_flat[-2]=0
+U0_flat[-1]=0
+print(np.linalg.norm(T1-U0_flat)/np.linalg.norm(U0_flat),"Relative Error after variation_of_lasttwo")
+T1=T1.reshape(2**expo,2**expo)
+plt.figure()
+plt.pcolormesh(X,Y,T1)
+plt.title("MPS Velocity Approximation")
+print(MPS1.r,MPS1.size)
+
+
 
 plt.show()

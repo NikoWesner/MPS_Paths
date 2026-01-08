@@ -53,7 +53,20 @@ def match_values(T):
     # t1=T[0:half]
     # t2=T[half:]
     return t1,t2,inv
+def sort_by_pairs(arr):
+    # Convert to numpy array if it isn't one
+    data = np.asanyarray(arr)
+    
+    if data.size % 2 != 0:
+        raise ValueError("The array must have an even number of entries.")
+    
+    # 1. Reshape into (-1, 2) to get rows of pairs
+    # 2. Sort along axis 1 (the pairs themselves)
+    # 3. Flatten back to 1D
+    return np.sort(data.reshape(-1, 4), axis=1).flatten()
 def interleave_array(arr):
+    size=np.size(arr)
+    arr=np.reshape(arr,size)
     arr = np.asarray(arr)
     n = len(arr)
     assert n % 2 == 0, "Array length must be even"
@@ -429,4 +442,48 @@ def fetch4plots(fun,expo,e,name):
     print(f"Lineardependency:{d1}")
     print("----------------------------")   
     return
+def variation_of_lasttwo(array):
+    # 1. Capture original shape to restore it later
+    original_shape = array.shape
+    
+    # 2. Use a copy to avoid accidentally modifying the input global variable
+    # We flatten a copy so we can work with indices safely
+    arr = np.array(array, copy=True).ravel()
+    size = arr.size
+    mid = size // 2
+    
+    # Split into two halves
+    t1 = arr[:mid]
+    t2 = arr[mid:]
+    
+    # 3. Handle the 'Last Two' of t1 and t2 safely
+    # If the array is too small, return as is
+    if t1.size < 2 or t2.size < 2:
+        return array 
 
+    denominator = t1[-1] - t1[-2]
+    
+    # 4. Zero Division Check (Stability)
+    if np.isclose(denominator, 0):
+        # In Tensor Trains, this happens if core values are uniform.
+        # We return the original to prevent NaN propagation.
+        return array 
+        
+    # 5. Core Math
+    t1t1 = np.sum(t1**2)
+    t2t2 = np.sum(t2**2)
+    t1t2 = np.dot(t1, t2)
+    
+    e1 = t2t2 - t1t1
+    e2 = t1t2 - t1t1
+    
+    det_inv = 1.0 / denominator
+    alpha = det_inv * (t1[-1] * e1 - e2)
+    beta = det_inv * (-t1[-1] * e1 + e2)
+    
+    # 6. Apply updates
+    t2[-2] += alpha
+    t2[-1] += beta
+    
+    # 7. Reshape back to the exact structure of the TT-core
+    return arr.reshape(original_shape)
