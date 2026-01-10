@@ -1,5 +1,5 @@
 import numpy as np
-
+from utils.Support import *
 
 class MPS:
 
@@ -393,7 +393,25 @@ class MPS:
                 new_low_right_bit_array = int_to_bit_array(pi + 1 ,self.expo)
                 # Note: Assuming you pass the required bit length (n) here
                 self.quicksort( new_low_right_bit_array, high_bit_array)
-                
+    def quicksort2(self):
+        T=self.reTensor()
+        size=T.size
+        T=np.reshape(T,size)
+        perm = np.argsort(T)
+        perm=perm.flatten()
+        T=np.sort(T)
+        MPO1=MPO(self.expo)
+        MPO1.eye()
+        MPO2=MPO(self.expo)
+        a=len(perm)
+        for i in range(a):
+            if i!=perm[i]:
+                MPO2.permutationMPO(i,perm[i])
+                MPO1.MPOMPO(MPO2)
+                MPO1.reTruncate(1E-6)
+        self.MPOMPS(MPO1)
+        self.retruncate(1E-6)
+        return MPO1
 
 
 class MPO:
@@ -477,42 +495,6 @@ class MPO:
 
         self.cores[0] = M.reshape(dim[0], dim[1],r[0])
         self.r=r
-
-    def truncated_l(self,T, e):
-        permuter = np.zeros((2 * self.expo), dtype=int)
-        for i in range(self.expo):
-            permuter[2 * i] = i
-            permuter[2 * i + 1] = self.expo + i
-        permuter = permuter.tolist()
-        permuter = tuple(permuter)
-        T = T.transpose(permuter)
-        dim = T.shape
-        N = T.size
-        l = self.expo*2
-
-        T = T.reshape(N // (dim[-1] * dim[-2]), (dim[-1] * dim[-2]))
-        self.p = np.linalg.norm(T, ord='fro')
-        T=T/self.p
-        U, S, Vt = np.linalg.svd(T, full_matrices=False)
-        U, S, Vt, rs, Er= killSVD(U, S, Vt, e)
-        self.E += Er
-        r = np.zeros(l // 2 - 1, dtype=int)
-        r[-1] = rs
-        self.cores[-1] = Vt.reshape(r[-1],dim[-2], dim[-1])
-        M = U @ S
-
-
-        for i in reversed(range(1, l // 2 - 1)):
-            ndim = dim[2 * i]*dim[2 * i + 1]
-            M = M.reshape(M.size // (r[i] * ndim), (r[i] * ndim))
-            U, S, Vt = np.linalg.svd(M, full_matrices=False)
-            U, S, Vt, rs,Er = killSVD(U, S, Vt, e)
-            self.E += Er
-            r[i-1] = rs
-            self.cores[i] = Vt.reshape(r[i - 1], dim[2 * i], dim[2 * i + 1], r[i])
-            M = U @ S
-
-        self.cores[0] = M.reshape(dim[0], dim[1],r[0])
 
     def reTensor(self):
         T=np.tensordot(self.cores[0],self.cores[1],axes=(2,0))
@@ -718,45 +700,7 @@ def create_interleaved_array(expo):
     permuter = tuple(permuter)
     return permuter
 
-def int_to_bit_array(n, n_bits):
-    """
-    Converts a Python integer 'n' into a list of 'n_bits' bits (MSB first), 
-    padding with leading zeros if necessary.
-    """
-    if n < 0:
-        raise ValueError("Input integer must be non-negative.")
-        
-    # 1. Convert to binary string
-    # bin(n) returns a string like '0b1011'. [2:] slices off the '0b'.
-    binary_string = bin(n)[2:]
-    
-    # 2. Check for overflow
-    if len(binary_string) > n_bits:
-        raise OverflowError(f"Integer {n} requires more than {n_bits} bits.")
-        
-    # 3. Pad with leading zeros
-    # e.g., if n_bits=8 and binary_string='101', padded_string becomes '00000101'
-    padded_string = binary_string.zfill(n_bits)
-    
-    # 4. Convert padded string to a list of integers
-    return [int(bit) for bit in padded_string]
 
-def bit_array_to_int(bit_array):
-    """
-    Converts a list/array of bits (most significant bit first) into a Python integer,
-    handling cases where array elements might be non-standard integer types.
-    """
-    integer_value = 0
-    
-    # Iterate through the bits from left (MSB) to right (LSB)
-    for bit in bit_array:
-        # **THE FIX:** Explicitly cast 'bit' to a standard Python 'int'
-        int_bit = int(bit)
-        
-        # Bitwise left shift (multiplies by 2) and bitwise OR (adds the current bit)
-        integer_value = (integer_value << 1) | int_bit
-        
-    return integer_value
 def partition(MPS,low,high):
     pivot=MPS.getElement(high)
     low_dec=bit_array_to_int(low)
@@ -777,7 +721,8 @@ def partition(MPS,low,high):
                 continue
             MPO2.permutationMPO(i,j)
             MPO1.MPOMPO(MPO2)
-            MPO1.reTruncate(1E-10)
+            MPO1.reTruncate(1E-6)
+            print(MPO1.r)
     if high_dec==(i+1):
         MPO2.eye()
     else:    

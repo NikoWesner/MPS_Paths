@@ -1,5 +1,7 @@
 import numpy as np
-
+from utils.Tensorhelp import *
+from utils.Analysis import minmaxMPS
+from utils.read_data import read_amira, read_h5_data
 RED = "\033[91m"
 RESET = "\033[0m"
 
@@ -114,101 +116,150 @@ def extract_coefficients(M):
             coeffs[i, j] = block[0, 0]
 
     return coeffs
+def match_values_double(T):
+    """
+    For each value in t1, find the closest available value in t20.
+    Each value in t20 is used at most once.
 
+    Returns:
+        t2: array of chosen values from t20 (same shape as t1)
+        idx_used: indices in t20 that were chosen
+    """
+    size=np.size(T)
+    T=np.reshape(T,size)
+    perm = np.argsort(T)
+    perm=perm.flatten()
+    # sorted array
+    T=T[perm]
+    T=T[perm]
 
-np.set_printoptions(threshold=8*8*8*8)
+    # compute inverse permutation
+    inv = np.empty_like(perm)
+    inv[perm] = np.arange(len(perm))
 
+    # reconstruct original
+    n = len(T)
+    half = n // 2
+    t1=T[0::2]
+    t2=T[1::2]
 
-expo=4
+    # t2[0:1000]=t1[0:1000]
+    # t1=T[0:half]
+    # t2=T[half:]
+    return t1,t2,inv
+def minmaxMPS2(T,expo,e):
+    size=np.size(T)
+    T=np.reshape(T,(size))
+    t1,t2,inv=match_values_double(T)
+    T_sorted=np.append(t1,t2)
+    T=getTensor_forMPS(T_sorted,2*expo)
+    MPS2=MPS(2*expo)
+    MPS2.truncated_l(T,e)
+    MPS2.getSize()
+    r=MPS2.r
+    s=MPS2.size
+    return MPS2, r,s,inv
+import numpy as np
+from collections import defaultdict
 
-x=np.arange(4**expo)
-yb,y=permuted_bitstrings(2*expo,permuter(expo))
-print(y)
-P= permutation_matrix_from_vectors(y,x)
-M=extract_coefficients(P)
+def find_perm_sqrt_with_internal_swap(p1_input):
+    n = len(p1_input)
+    # We copy the input so we can modify the cycles internally
+    p1_modified = list(p1_input)
+    visited = [False] * n
+    required_swaps = []
+    
+    # 1. First pass: Identify cycles and find the "lonely" even ones
+    cycles = []
+    for i in range(n):
+        if not visited[i]:
+            curr, cycle = i, []
+            while not visited[curr]:
+                visited[curr] = True
+                cycle.append(curr)
+                curr = p1_input[curr]
+            cycles.append(cycle)
+            
+    length_map = defaultdict(list)
+    for c in cycles:
+        length_map[len(c)].append(c)
+        
+    # 2. THE FIX: Break lonely even cycles into two odd cycles
+    for length, group in length_map.items():
+        if length % 2 == 0 and len(group) % 2 != 0:
+            lonely_cycle = group.pop()
+            # We swap the targets of the first and last elements in the cycle
+            # This mathematically splits the cycle into an (L-1) cycle and a (1) cycle
+            idx_a, idx_b = lonely_cycle[0], lonely_cycle[-1]
+            
+            p1_modified[idx_a], p1_modified[idx_b] = p1_modified[idx_b], p1_modified[idx_a]
+            
+            # This is the single swap needed to restore the even cycle later
+            required_swaps.append((idx_a, idx_b))
 
-color_matrix(M[0:32,0:32])
-print(np.shape(M))
+    # 3. Second pass: Decompose the modified P1 (all cycles now rootable)
+    visited = [False] * n
+    final_cycles = []
+    for i in range(n):
+        if not visited[i]:
+            curr, cycle = i, []
+            while not visited[curr]:
+                visited[curr] = True
+                cycle.append(curr)
+                curr = p1_modified[curr]
+            final_cycles.append(cycle)
 
-G1=np.zeros((2,2,4))
-G2=np.zeros((4,2,2,4))
-G3=np.zeros((4,2,2,4))
-G4=np.zeros((4,2,2))
+    # 4. Solve for P2
+    final_map = defaultdict(list)
+    for c in final_cycles:
+        final_map[len(c)].append(c)
 
-uno=np.array([[1,0],[0,0]])
-due=np.array([[0,1],[0,0]])
-tre=np.array([[0,0],[1,0]])
-qua=np.array([[0,0],[0,1]])
+    p2 = [0] * n
+    for length, group in final_map.items():
+        if length % 2 != 0:
+            step = (length + 1) // 2
+            for cycle in group:
+                for i in range(length):
+                    p2[cycle[i]] = cycle[(i + step) % length]
+        else:
+            # Pair the even cycles that were not lonely
+            for i in range(0, len(group), 2):
+                c1, c2 = group[i], group[i+1]
+                for j in range(length):
+                    p2[c1[j]] = c2[j]
+                    p2[c2[j]] = c1[(j + 1) % length]
 
-G1[:,:,0]=uno
-G1[:,:,1]=due
-G1[:,:,2]=tre
-G1[:,:,3]=qua
+    return p2, required_swaps
 
-G2[0,:,:,0]=uno
-G2[1,:,:,2]=uno
+# --- Usage & Verification ---
+# p1 = [1, 2, 0, 4, 3, 6, 5, 8, 9, 10, 7, 11]
+# p2, correction_swaps = find_perm_sqrt_with_internal_swap(p1)
 
-G2[0,:,:,1]=tre
-G2[1,:,:,3]=tre
+# print(f"P2: {p2}")
+# print(f"Swaps to apply at the very end: {correction_swaps}")
 
+# # Final verification
+# p2_arr = np.array(p2)
+# res = p2_arr[p2_arr] # P2 squared
+# print(res)
+# for i, j in correction_swaps:
+#     res[i], res[j] = res[j], res[i] # Apply the single fix
 
-G2[2,:,:,0]=due
-G2[3,:,:,2]=due
+# print("Matches original P1?", np.array_equal(res, p1))
 
+expo=9
+e=1E-8
 
-G2[3,:,:,3]=qua
-G2[2,:,:,1]=qua
+MPO1=MPO(expo)
+MPO1.eye()
+MPO2=MPO(expo)
+for i in range(12):
+    p,j=np.random.randint(0,2*expo,size=2)
+    MPO2.permutationMPO(p,j)
+    MPO1.MPOMPO(MPO2)
+    if i%2==0:
+        MPO1.reTruncate(e)
+        print(MPO1.r)
 
-
-
-
-G3[0,:,:,0]=uno
-G3[1,:,:,1]=uno
-
-G3[2,:,:,0]=tre
-G3[3,:,:,1]=tre
-
-
-G3[0,:,:,2]=due
-G3[1,:,:,3]=due
-
-
-G3[2,:,:,2]=qua
-G3[3,:,:,3]=qua
-
-
-
-
-G4[0,:,:]=uno
-G4[1,:,:]=due
-G4[2,:,:]=tre
-G4[3,:,:]=qua
-
-T=np.tensordot(G1,G2,axes=(-1,0))
-T=np.tensordot(T,G2,axes=(-1,0))
-T=np.tensordot(T,G3,axes=(-1,0))
-T=np.tensordot(T,G3,axes=(-1,0))
-T=np.tensordot(T,G4,axes=(-1,0))
-
-T=T.transpose((0,2,4,6,8,10,1,3,5,7,9,11))
-T=T.reshape(64,64)
-
-
-# T1=np.zeros((2,2,4))
-# T2=np.zeros((4,2,2))
-# T3=np.zeros((4,2,2,4))
-# T1[:,:,0]=uno
-# T1[:,:,1]=due
-# T2[0,:,:]=uno
-# T2[1,:,:]=due
-# T3[0,:,:,0]=uno
-# T3[1,:,:,1]=due
-
-# T=np.tensordot(T1,T3,axes=(-1,0))
-# T=np.tensordot(T,T2,axes=(-1,0))
-# T=T.transpose()
-# T=T.reshape(8,8)
-# print(T)
-print("Here")
-
-color_matrix(T[0:32,0:32],value=1)
+MPO1.reTruncate(e)
+print(MPO1.r)

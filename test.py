@@ -8,7 +8,42 @@ from hilbertcurve.hilbertcurve import HilbertCurve
 from matplotlib.colors import LogNorm, PowerNorm
 import math
 import matplotlib.cm as cm
-from utils.Analysis import fetch4plots,sort_by_pairs,variation_of_lasttwo
+from utils.Analysis import fetch4plots,sort_by_pairs,variation_of_lasttwo,minmaxMPS
+from scipy.sparse import diags
+from collections import defaultdict, Counter
+
+def create_tridiagonal(n, low, mid, high):
+    """
+    Creates an n x n tridiagonal matrix with constant values.
+    low: value for the sub-diagonal
+    mid: value for the main diagonal
+    high: value for the super-diagonal
+    """
+    # diags takes a list of arrays and their offsets
+    # [low, mid, high] at offsets [-1, 0, 1]
+    # np.full(length, value) creates the constant value arrays
+    offsets = [-1, 0, 1]
+    data = [
+        np.full(n - 1, low), 
+        np.full(n, mid), 
+        np.full(n - 1, high)
+    ]
+    
+    # Returning as a dense array for your small-scale tests,
+    # but .toarray() can be removed if you want a sparse object.
+    return diags(data, offsets).toarray()
+
+def create_random_permutation(n):
+    """
+    Creates an n x n random permutation matrix.
+    """
+    # Create an identity matrix
+    I = np.eye(n)
+    # Generate a random permutation of indices
+    p = np.random.permutation(n)
+    # Reorder the rows (or columns) based on the permutation
+    return I[p]
+
 def sinconst_alpha(x,y,alpha):
 
     fun= np.sin(np.cos(alpha)*x+np.sin(alpha)*y)
@@ -266,7 +301,291 @@ def compute_and_visualize_fft2d(f,name="function"):
     plt.axis('off')
 
     plt.tight_layout()
-   
+def find_perm_sqrt(p1):
+    n = len(p1)
+    visited = [False] * n
+    cycles = []
+
+    # 1. Decompose P1 into cycles
+    for i in range(n):
+        if not visited[i]:
+            curr = i
+            cycle = []
+            while not visited[curr]:
+                visited[curr] = True
+                cycle.append(curr)
+                curr = p1[curr]
+            cycles.append(cycle)
+
+    # 2. Group cycles by their lengths
+    from collections import defaultdict
+    length_map = defaultdict(list)
+    for cycle in cycles:
+        length_map[len(cycle)].append(cycle)
+
+    p2 = [0] * n
+    print("Even length cycles (length: count):", 
+        {k: len(v) for k, v in length_map.items() if k % 2 == 0})
+    # 3. Process cycles to find the root
+    for length, group in length_map.items():
+        if length % 2 != 0:
+            # Odd cycle: Square root is P1^((length+1)/2)
+            # This effectively "un-skips" the elements
+            step = (length + 1) // 2
+            for cycle in group:
+                for i in range(length):
+                    p2[cycle[i]] = cycle[(i + step) % length]
+        else:
+            # Even cycle: Must pair two cycles of the same length
+            if len(group) % 2 != 0:
+                raise ValueError(f"No square root: odd number of cycles of even length {length}")
+            
+            for i in range(0, len(group), 2):
+                c1, c2 = group[i], group[i+1]
+                # Interleave two cycles of length L into one cycle of length 2L
+                for j in range(length):
+                    p2[c1[j]] = c2[j]
+                    p2[c2[j]] = c1[(j + 1) % length]
+
+    return p2
+def find_perm_sqrt_cheating(p1):
+    n = len(p1)
+    visited = [False] * n
+    cycles = []
+
+    # 1. Decompose into cycles
+    for i in range(n):
+        if not visited[i]:
+            curr, cycle = i, []
+            while not visited[curr]:
+                visited[curr] = True
+                cycle.append(curr)
+                curr = p1[curr]
+            cycles.append(cycle)
+
+    from collections import defaultdict
+    length_map = defaultdict(list)
+    for cycle in cycles:
+        length_map[len(cycle)].append(cycle)
+
+    p2 = [0] * n
+
+    # 2. The Cheat: Handle Even cycles
+    for length in list(length_map.keys()):
+        if length % 2 == 0:
+            group = length_map[length]
+            
+            # If we have an odd number of even cycles, "steal" one from elsewhere
+            if len(group) % 2 != 0:
+                # OPTION: Try to find another cycle of the same length to pair with
+                # CHEAT: If no pair exists, we simply force it to stay as is 
+                # (This creates a tiny error in P2*P2 but prevents a crash)
+                lonely_cycle = group.pop()
+                for i in range(length):
+                    p2[lonely_cycle[i]] = lonely_cycle[i] # Force to Identity
+            
+            # Pair up the remaining even cycles
+            for i in range(0, len(group), 2):
+                c1, c2 = group[i], group[i+1]
+                for j in range(length):
+                    p2[c1[j]] = c2[j]
+                    p2[c2[j]] = c1[(j + 1) % length]
+                    
+        else:
+            # Odd cycles work as normal
+            step = (length + 1) // 2
+            for cycle in length_map[length]:
+                for i in range(length):
+                    p2[cycle[i]] = cycle[(i + step) % length]
+
+    return p2
+def find_perm_sqrt_with_correction(p1):
+    n = len(p1)
+    visited = [False] * n
+    cycles = []
+
+    # 1. Decompose into cycles
+    for i in range(n):
+        if not visited[i]:
+            curr, cycle = i, []
+            while not visited[curr]:
+                visited[curr] = True
+                cycle.append(curr)
+                curr = p1[curr]
+            cycles.append(cycle)
+
+    from collections import defaultdict
+    length_map = defaultdict(list)
+    for cycle in cycles:
+        length_map[len(cycle)].append(cycle)
+
+    p2 = list(range(n)) # Start with Identity
+    correction = list(range(n)) # Elements that need fixing
+
+    # 2. Process Cycles
+    for length, group in length_map.items():
+        if length % 2 != 0:
+            # Odd cycles: Perfect square root
+            step = (length + 1) // 2
+            for cycle in group:
+                for i in range(length):
+                    p2[cycle[i]] = cycle[(i + step) % length]
+        else:
+            # Even cycles: Pair them if possible
+            while len(group) >= 2:
+                c1 = group.pop()
+                c2 = group.pop()
+                for j in range(length):
+                    p2[c1[j]] = c2[j]
+                    p2[c2[j]] = c1[(j + 1) % length]
+            
+            # If one is left over, it's "Unsolvable"
+            if len(group) == 1:
+                lonely_cycle = group.pop()
+                # We leave p2 as identity for these indices
+                # and put the original mapping into 'correction'
+                for i in range(length):
+                    # Elements stay still in p2, but we note the needed swap
+                    correction[lonely_cycle[i]] = p1[lonely_cycle[i]]
+
+    return p2, correction
+def find_perm_sqrt_efficient_cheat(p1):
+    n = len(p1)
+    visited = [False] * n
+    p2 = list(range(n))
+    required_swaps = []
+    
+    # 1. Decompose into cycles
+    for i in range(n):
+        if not visited[i]:
+            curr, cycle = i, []
+            while not visited[curr]:
+                visited[curr] = True
+                cycle.append(curr)
+                curr = p1[curr]
+            
+            L = len(cycle)
+            if L % 2 != 0:
+                # ODD: Perfect square root (0 swaps)
+                step = (L + 1) // 2
+                for j in range(L):
+                    p2[cycle[j]] = cycle[(j + step) % L]
+            else:
+                # EVEN: The "One-Swap" Cheat
+                # We can't solve it perfectly, but we can solve L-1 elements
+                # and leave a single swap (cycle[0], cycle[L//2]) for the end.
+                
+                # Use a modified step for even length
+                step = L // 2
+                for j in range(L):
+                    p2[cycle[j]] = cycle[(j + step) % L]
+                
+                # This specific P2 squared results in p1 PLUS a swap
+                # between the elements halfway across the cycle.
+                required_swaps.append((cycle[0], cycle[step]))
+
+    return p2, required_swaps
+def verify_solution(p1, p2, swaps):
+    """
+    p1: Original permutation list
+    p2: The calculated square-root permutation list
+    swaps: List of tuples (i, j)
+    """
+    n = len(p1)
+    # Convert to numpy for fast vectorized application
+    p2_arr = np.array(p2)
+    
+    # 1. Apply P2 twice: data = p2[p2[identity]]
+    # This simulates the matrix multiplication B * B
+    identity = np.arange(n)
+    after_p2_twice = p2_arr[p2_arr[identity]]
+    
+    # 2. Apply the simple swaps to the result
+    # We work on a copy to avoid mutating the intermediate result
+    final_result = after_p2_twice.copy()
+    for i, j in swaps:
+        # Simple swap logic
+        final_result[i], final_result[j] = final_result[j], final_result[i]
+    
+    # 3. Compare with P1
+    is_correct = np.array_equal(final_result, p1)
+    
+    # Calculate error if not correct
+    if not is_correct:
+        diff_count = np.sum(final_result != p1)
+        print(f"❌ Verification Failed! {diff_count} elements do not match.")
+    else:
+        print("✅ Verification Successful! (P2^2 + Swaps) == P1")
+        
+    return is_correct
+def find_perm_sqrt_with_internal_swap(p1_input):
+    n = len(p1_input)
+    # We copy the input so we can modify the cycles internally
+    p1_modified = list(p1_input)
+    visited = [False] * n
+    required_swaps = []
+    
+    # 1. First pass: Identify cycles and find the "lonely" even ones
+    cycles = []
+    for i in range(n):
+        if not visited[i]:
+            curr, cycle = i, []
+            while not visited[curr]:
+                visited[curr] = True
+                cycle.append(curr)
+                curr = p1_input[curr]
+            cycles.append(cycle)
+            
+    length_map = defaultdict(list)
+    for c in cycles:
+        length_map[len(c)].append(c)
+        
+    # 2. THE FIX: Break lonely even cycles into two odd cycles
+    for length, group in length_map.items():
+        if length % 2 == 0 and len(group) % 2 != 0:
+            lonely_cycle = group.pop()
+            # We swap the targets of the first and last elements in the cycle
+            # This mathematically splits the cycle into an (L-1) cycle and a (1) cycle
+            idx_a, idx_b = lonely_cycle[0], lonely_cycle[-1]
+            
+            p1_modified[idx_a], p1_modified[idx_b] = p1_modified[idx_b], p1_modified[idx_a]
+            
+            # This is the single swap needed to restore the even cycle later
+            required_swaps.append((idx_a, idx_b))
+
+    # 3. Second pass: Decompose the modified P1 (all cycles now rootable)
+    visited = [False] * n
+    final_cycles = []
+    for i in range(n):
+        if not visited[i]:
+            curr, cycle = i, []
+            while not visited[curr]:
+                visited[curr] = True
+                cycle.append(curr)
+                curr = p1_modified[curr]
+            final_cycles.append(cycle)
+
+    # 4. Solve for P2
+    final_map = defaultdict(list)
+    for c in final_cycles:
+        final_map[len(c)].append(c)
+
+    p2 = [0] * n
+    for length, group in final_map.items():
+        if length % 2 != 0:
+            step = (length + 1) // 2
+            for cycle in group:
+                for i in range(length):
+                    p2[cycle[i]] = cycle[(i + step) % length]
+        else:
+            # Pair the even cycles that were not lonely
+            for i in range(0, len(group), 2):
+                c1, c2 = group[i], group[i+1]
+                for j in range(length):
+                    p2[c1[j]] = c2[j]
+                    p2[c2[j]] = c1[(j + 1) % length]
+
+    return p2, required_swaps
 
 
 path=r"N:\Code\MPS\MPS_Paths\data\2D_VortexFlow_ETH\0500.am"
@@ -286,15 +605,11 @@ u0=data[t,:,:,0]
 v0=data[t,:,:,1]
 
 U0=np.sqrt(u0**2+v0**2)
-fun=sinconst_k(X,Y,150)
-fun2=randomfunction(X,Y)
-fun3=synthesize_2d_holder_function(1.2)
-fun4=sinconst_alpha(X,Y,0)
-M=create_mandelbrot_fractal()
-
-expo=9
-eexpo=2**expo
-e=2E-3
+# fun=sinconst_k(X,Y,150)
+# fun2=randomfunction(X,Y)
+# fun3=synthesize_2d_holder_function(1.2)
+# fun4=sinconst_alpha(X,Y,0)
+# M=create_mandelbrot_fractal()
 
 
 
@@ -332,28 +647,33 @@ e=2E-3
 # fetch4plots(fun3,expo,e,"Synth")
 # fetch4plots(fun4,expo,e,"Sin45")
 # fetch4plots(M,expo,e,"Mandelbrot")
+p1=U0.flatten().argsort()
+p2, correction_swaps = find_perm_sqrt_with_internal_swap(p1)
 
-MPS1=MPS(2*expo)
-# T1=variation_of_lasttwo(U0)
-T1=U0
-T1=getTensor_forMPS(T1,2*expo)
-print(np.shape(T1))
-MPS1.truncated_l(T1,e)
-MPS1.getSize()
-T1=MPS1.reTensor()
-T1=T1.reshape(2**expo*2**expo,1)
-T1[-2]=0
-T1[-1]=0
-U0_flat=U0.reshape(2**expo*2**expo,1)
-U0_flat[-2]=0
-U0_flat[-1]=0
-print(np.linalg.norm(T1-U0_flat)/np.linalg.norm(U0_flat),"Relative Error after variation_of_lasttwo")
-T1=T1.reshape(2**expo,2**expo)
-plt.figure()
-plt.pcolormesh(X,Y,T1)
-plt.title("MPS Velocity Approximation")
-print(MPS1.r,MPS1.size)
+# # print(f"P2: {p2}")
+# print(f"Swaps to apply at the very end: {correction_swaps}")
+# # Final verification
+# p2_arr = np.array(p2)
+# res = p2_arr[p2_arr] # P2 squared
+# print(res)
+# for i, j in correction_swaps:
+#     res[i], res[j] = res[j], res[i] # Apply the single fix
+
+# print("Matches original P1?", np.array_equal(res, p1))
+expo=12
+e=1E-3
+T=np.random.random((2**expo,1))
+A=create_tridiagonal(2**expo, -1, 2, -1)
+MPO1=MPO(expo)
+MPS1=MPS(expo)
+T=getTensor_forMPS(T,expo)
+A=getTensor_forMP0(A,expo)
+MPS1.truncated_l(T,e)
+MPO1.truncated_l(A,e)
+
+MPS2, r,s,inv,d1=minmaxMPS(T,expo//2,e)
 
 
-
-plt.show()
+print(MPS1.r)
+print(MPS2.r)
+print(MPO1.r)
