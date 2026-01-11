@@ -422,8 +422,6 @@ class MPO:
         self.p=1
         self.E=0
         self.r=[None]*(expo-1)
-
-
     def truncated_r(self,T, e):
         permuter=np.zeros((2*self.expo),dtype=int)
         for i in range(self.expo):
@@ -458,7 +456,6 @@ class MPO:
 
         self.cores[-1] = M.reshape(r[-1], dim[l - 2], dim[l - 1])
         self.r=r
-
     def truncated_l(self,T, e):
         permuter = np.zeros((2 * self.expo), dtype=int)
         for i in range(self.expo):
@@ -495,7 +492,6 @@ class MPO:
 
         self.cores[0] = M.reshape(dim[0], dim[1],r[0])
         self.r=r
-
     def reTensor(self):
         T=np.tensordot(self.cores[0],self.cores[1],axes=(2,0))
         index=5
@@ -539,7 +535,7 @@ class MPO:
                 self.cores[i][2,:,:,2]=bin2arrdiag[f'{aj}']
                 self.cores[i][3,:,:,3]=bin2arrodiag[f'{ai}{aj}']
                 self.cores[i][4,:,:,4]=bin2arrodiag[f'{aj}{ai}']
-        self.r=5*np.ones(self.expo-1)
+        self.r=5*np.ones(self.expo-1,dtype=int)
     def reTruncate(self,e):
         
         s=self.cores[0].shape
@@ -591,7 +587,6 @@ class MPO:
             self.cores[i-1] = np.tensordot(self.cores[i-1],M,axes=(-1,0))
 
         self.E +=E 
-
     def MPOMPO(self,MPO):
         A = np.tensordot(MPO.cores[0], self.cores[0], axes=(1, 0))
         A=A.transpose(0,2,1,3)
@@ -620,11 +615,55 @@ class MPO:
         self.cores[-1]=coreend
         for i in range(1,self.expo-1):
             self.cores[i]=coredef
-        self.r=np.ones(self.expo-1)
+        self.r=np.ones(self.expo-1,dtype=int)
+    def zero(self):
+        self.cores[0]=np.zeros((2,2,1))
+        self.cores[-1]=np.zeros((1,2,2))
+        for i in range(1,self.expo-1):
+            self.cores[i]=np.zeros((1,2,2,1))
+        self.r=np.ones(self.expo-1,dtype=int)
+    def unit_permutationMPO(self,i,j):
+        if i==j:
+            print("cannot permute, i==j")
+        else:
+            bitsi = np.array(list(format(i, f'0{self.expo}b')), dtype=int)
+            bitsj = np.array(list(format(j, f'0{self.expo}b')), dtype=int)
+
+            bin2arrdiag= {"0":np.array([[1,0],[0,0]]),"1":np.array([[0,0],[0,1]])}
+            bin2arrodiag={"00":np.array([[1,0],[0,0]]),"11":np.array([[0,0],[0,1]]),"01":np.array([[0,1],[0,0]]),"10":np.array([[0,0],[1,0]])}
+
+
+            self.cores[0]=np.zeros((2,2,4))
+            self.cores[0][:,:,0]=-bin2arrdiag[f'{bitsi[0]}']
+            self.cores[0][:,:,1]=-bin2arrdiag[f'{bitsj[0]}']
+            self.cores[0][:,:,2]=bin2arrodiag[f'{bitsi[0]}{bitsj[0]}']
+            self.cores[0][:,:,3]=bin2arrodiag[f'{bitsj[0]}{bitsi[0]}']
+
+            self.cores[-1]=np.zeros((4,2,2))
+            self.cores[-1][0,:,:]=bin2arrdiag[f'{bitsi[-1]}']
+            self.cores[-1][1,:,:]=bin2arrdiag[f'{bitsj[-1]}']
+            self.cores[-1][2,:,:]=bin2arrodiag[f'{bitsi[-1]}{bitsj[-1]}']
+            self.cores[-1][3,:,:]=bin2arrodiag[f'{bitsj[-1]}{bitsi[-1]}']
         
-
-
-
+            for i in range(1,self.expo-1):
+                self.cores[i]=np.zeros((4,2,2,4))
+                ai=bitsi[i]
+                aj=bitsj[i]
+                self.cores[i][0,:,:,0]=bin2arrdiag[f'{ai}']
+                self.cores[i][1,:,:,1]=bin2arrdiag[f'{aj}']
+                self.cores[i][2,:,:,2]=bin2arrodiag[f'{ai}{aj}']
+                self.cores[i][3,:,:,3]=bin2arrodiag[f'{aj}{ai}']
+        self.r=4*np.ones(self.expo-1,dtype=int)      
+    def MPO_add(self,MPO):
+        self.cores[0]=np.concatenate((self.cores[0],MPO.cores[0]),axis=2)
+        for i in range(1,self.expo-1):
+            fillerT=np.zeros((self.r[i-1],2,2,MPO.r[i]))
+            fillerB=np.zeros((MPO.r[i-1],2,2,self.r[i]))           
+            top=np.concatenate((self.cores[i],fillerT),axis=3)
+            bottom=np.concatenate((fillerB,MPO.cores[i]),axis=3)
+            self.cores[i]=np.concatenate((top,bottom),axis=0)
+        self.cores[-1]=np.concatenate((self.cores[-1],MPO.cores[-1]),axis=0)
+        self.r=self.r+MPO.r
     
 def killSVD(U, S, Vt, e):
     # Placeholder for the killSVD function.

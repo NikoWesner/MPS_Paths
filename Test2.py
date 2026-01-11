@@ -230,7 +230,34 @@ def find_perm_sqrt_with_internal_swap(p1_input):
                     p2[c2[j]] = c1[(j + 1) % length]
 
     return p2, required_swaps
+def getRandomMPO(expo,e,n_iterations,limit):
+    MPO1=MPO(expo)
+    MPO1.zero()
+    MPO2=MPO(expo)
+    used_pairs = set()
+    results = []
+    for i in range(n_iterations):
+        while True:
+            # Generate two random integers
+            p, j = np.random.randint(2**10, 2**10+limit, size=2)
+            
+            # Check conditions:
+            # 1. p != j
+            # 2. (p, j) hasn't occurred before
+            # 3. (j, p) hasn't occurred before (optional: include if order doesn't matter)
+            if p != j and (p, j) not in used_pairs:
+                used_pairs.add((p, j))
+                # used_pairs.add((j, p)) # Uncomment if you treat (1,2) the same as (2,1)
+                results.append((p, j))
+                break
 
+    for idx, (p, j) in enumerate(results):
+        MPO2.unit_permutationMPO(p,j)
+        MPO1.MPO_add(MPO2)
+        if idx%4==0:
+            MPO1.reTruncate(e)
+    MPO1.reTruncate(e)
+    return MPO1
 # --- Usage & Verification ---
 # p1 = [1, 2, 0, 4, 3, 6, 5, 8, 9, 10, 7, 11]
 # p2, correction_swaps = find_perm_sqrt_with_internal_swap(p1)
@@ -247,19 +274,44 @@ def find_perm_sqrt_with_internal_swap(p1_input):
 
 # print("Matches original P1?", np.array_equal(res, p1))
 
-expo=9
+expo=18
 e=1E-8
 
-MPO1=MPO(expo)
-MPO1.eye()
-MPO2=MPO(expo)
-for i in range(12):
-    p,j=np.random.randint(0,2*expo,size=2)
-    MPO2.permutationMPO(p,j)
-    MPO1.MPOMPO(MPO2)
-    if i%2==0:
-        MPO1.reTruncate(e)
-        print(MPO1.r)
+# MPO1=MPO(expo)
+# MPO1.eye()
+# MPO2=MPO(expo)
+# used_pairs = set()
+# results = []
+# n_iterations = 10
+# limit = 2 **8
+# for i in range(n_iterations):
+#     print(i)
+#     while True:
+#         # Generate two random integers
+#         p, j = np.random.randint(0, limit, size=2)
+        
+#         # Check conditions:
+#         # 1. p != j
+#         # 2. (p, j) hasn't occurred before
+#         # 3. (j, p) hasn't occurred before (optional: include if order doesn't matter)
+#         if p != j and (p, j) not in used_pairs:
+#             used_pairs.add((p, j))
+#             # used_pairs.add((j, p)) # Uncomment if you treat (1,2) the same as (2,1)
+#             results.append((p, j))
+#             break
 
-MPO1.reTruncate(e)
+# for idx, (p, j) in enumerate(results):
+#     MPO2.unit_permutationMPO(p,j)
+#     MPO1.MPO_add(MPO2)
+#     if idx%4==0:
+#         MPO1.reTruncate(e)
+#         print(MPO1.r)
+# MPO1.reTruncate(e)
+MPO1=getRandomMPO(expo,e,100,2**4)
+MPO2=getRandomMPO(expo,e,100,2**4)
+
+print(MPO1.r)
+print(MPO2.r)
+MPO1.MPOMPO(MPO2)
+MPO1.reTruncate(1E-8)
 print(MPO1.r)

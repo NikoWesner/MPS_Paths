@@ -662,18 +662,22 @@ p2, correction_swaps = find_perm_sqrt_with_internal_swap(p1)
 # print("Matches original P1?", np.array_equal(res, p1))
 expo=12
 e=1E-3
-T=np.random.random((2**expo,1))
+T=np.random.random((2**expo,1)).flatten()
 A=create_tridiagonal(2**expo, -1, 2, -1)
 MPO1=MPO(expo)
 MPS1=MPS(expo)
-T=getTensor_forMPS(T,expo)
+T1=getTensor_forMPS(T,expo)
 A=getTensor_forMP0(A,expo)
-MPS1.truncated_l(T,e)
+MPS1.truncated_l(T1,e)
 MPO1.truncated_l(A,e)
 
-MPS2, r,s,inv,d1=minmaxMPS(T,expo//2,e)
+MPS2,inv=minmaxMPS(T1,expo,e)
+T2=np.sort(T)
+T3=getTensor_forMPS(T2,expo)
+MPS3=MPS(expo)
+MPS3.truncated_l(T3,e)
 
 
 print(MPS1.r)
 print(MPS2.r)
-print(MPO1.r)
+print(MPS3.r)

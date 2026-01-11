@@ -112,14 +112,15 @@ def minmaxMPS(T,expo,e):
     T=np.reshape(T,(size))
     t1,t2,inv=match_values(T)
     T_sorted=np.append(t1,t2)
-    T=getTensor_forMPS(T_sorted,2*expo)
-    MPS2=MPS(2*expo)
+    print(T_sorted,"minmax sorted")
+    T=getTensor_forMPS(T_sorted,expo)
+    MPS2=MPS(expo)
     MPS2.truncated_l(T,e)
     MPS2.getSize()
     r=MPS2.r
     s=MPS2.size
     d1=LinearDependency(t1,t2)
-    return MPS2, r,s,inv,d1
+    return MPS2,inv
 def XYMPS(T,expo,e):
     size=np.size(T)
     T=np.reshape(T,(size))
@@ -433,13 +434,12 @@ def fetch4plots(fun,expo,e,name):
     MPS1,r1,s1=XYMPS(fun,expo,e)
     MPSG,rg,sg=GourianovMPS(fun,expo,e)
     MPSH,rh,sh=HilbertMPS(fun,expo,e)
-    MPS2,r2,s2,inv,d1=minmaxMPS(fun,expo,e)
+    MPS2,inv=minmaxMPS(fun,expo,e)
     print(f"XY:{r1},{s1}")
     print(f"Gourianov:{rg},{sg}")
     print(f"Hilbert:{rh},{sh}")
-    print(f"minmax:{r2},{s2}")
+    print(f"minmax:{MPS2.r},{MPS2.size}")
     getGouianovplots(MPS1,MPS2,MPSG,MPSH,fun,expo,name)
-    print(f"Lineardependency:{d1}")
     print("----------------------------")   
     return
 def variation_of_lasttwo(array):
